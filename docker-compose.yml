@@ -1,0 +1,61 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: all
+#              capabilities: [gpu]
+
+  # Optional: Service to automatically pull models on startup
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: ollama-pull
+    depends_on:
+      - ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo 'Waiting for Ollama server to be ready...'
+        retries=0
+        max_retries=30
+        while [ $$retries -lt $$max_retries ]; do
+          if OLLAMA_HOST=http://ollama:11434 ollama list >/dev/null 2>&1; then
+            echo 'Ollama server is ready!'
+            break
+          else
+            retries=$$((retries + 1))
+            echo "Attempt $$retries/$$max_retries: waiting..."
+            sleep 2
+          fi
+        done
+
+        if [ $$retries -eq $$max_retries ]; then
+          echo 'ERROR: Ollama server failed to start'
+          exit 1
+        fi
+
+        echo 'Pulling Qwen 2.5 7B model...'
+        OLLAMA_HOST=http://ollama:11434 ollama pull qwen2.5:7b
+
+        echo 'Pulling Llama 3.1 8B model...'
+        OLLAMA_HOST=http://ollama:11434 ollama pull llama3.1:8b
+
+        echo 'Models pulled successfully!'
+    restart: "no"
+
+volumes:
+  ollama_data:
+    driver: local
